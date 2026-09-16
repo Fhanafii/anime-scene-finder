@@ -10,10 +10,13 @@ from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 
 from .embedding import ImageEmbedder
+from .aggregation import aggregate_scene_matches
 from .vector_store import VectorStore
 
 MAX_IMAGE_BYTES = int(os.getenv("SEARCH_MAX_IMAGE_BYTES", "10485760"))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "50"))
+SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "10"))
 
 app = FastAPI(title="Anime Scene Finder")
 embedder = ImageEmbedder()
@@ -40,7 +43,7 @@ def readiness() -> JSONResponse:
 
 
 @app.post("/api/v1/search")
-async def search(image: UploadFile = File(...), limit: int = Query(10, ge=1, le=50)) -> JSONResponse:
+async def search(image: UploadFile = File(...), limit: int = Query(SEARCH_RESULT_LIMIT, ge=1, le=50)) -> JSONResponse:
     if image.content_type not in ALLOWED_IMAGE_TYPES:
         return error("UNSUPPORTED_IMAGE_TYPE", "The uploaded file is not a supported image type.", 415)
     data = await image.read(MAX_IMAGE_BYTES + 1)
@@ -61,7 +64,7 @@ async def search(image: UploadFile = File(...), limit: int = Query(10, ge=1, le=
                 vector,
                 model=embedder.config.model_name,
                 model_version=embedder.config.pretrained,
-                limit=limit,
+                limit=SEARCH_TOP_K,
             )
         except Exception:
             return error("SEARCH_UNAVAILABLE", "Search is temporarily unavailable.", 503)
@@ -87,7 +90,8 @@ async def search(image: UploadFile = File(...), limit: int = Query(10, ge=1, le=
                     "match": {"timestamp": match.timestamp, "similarity": match.similarity},
                     "thumbnail_url": f"/api/v1/scenes/{match.scene_id}/thumbnail",
                 }
-                for match in matches
+                for candidate in aggregate_scene_matches(matches, limit)
+                for match in [candidate.match]
             ],
         }
     )
