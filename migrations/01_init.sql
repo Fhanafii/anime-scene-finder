@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS scenes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS scenes_episode_scene_index_idx
+ON scenes (episode_id, scene_index);
+
 -- Scene frames table with pgvector embedding
 CREATE TABLE IF NOT EXISTS scene_frames (
     id SERIAL PRIMARY KEY,

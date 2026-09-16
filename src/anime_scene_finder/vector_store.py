@@ -60,6 +60,44 @@ class VectorStore:
             ).fetchone()
         return row[0]
 
+    def upsert_episode(
+        self, *, title: str, slug: str, season: int, episode: int, episode_title: str | None,
+        duration: float, source_identifier: str,
+    ) -> tuple[int, int]:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            anime_id = connection.execute(
+                """INSERT INTO anime (title, slug) VALUES (%s, %s)
+                ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title
+                RETURNING id""", (title, slug)
+            ).fetchone()[0]
+            episode_id = connection.execute(
+                """INSERT INTO episodes
+                    (anime_id, season_number, episode_number, title, duration_seconds, source_identifier)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (anime_id, season_number, episode_number)
+                DO UPDATE SET title = EXCLUDED.title, duration_seconds = EXCLUDED.duration_seconds,
+                              source_identifier = EXCLUDED.source_identifier
+                RETURNING id""",
+                (anime_id, season, episode, episode_title, duration, source_identifier),
+            ).fetchone()[0]
+        return anime_id, episode_id
+
+    def insert_scene(self, episode_id: int, scene_index: int, start: float, end: float, representative: float) -> int:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            return connection.execute(
+                """INSERT INTO scenes (episode_id, scene_index, start_time, end_time, representative_time)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (episode_id, scene_index)
+                DO UPDATE SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time,
+                              representative_time = EXCLUDED.representative_time
+                RETURNING id""",
+                (episode_id, scene_index, start, end, representative),
+            ).fetchone()[0]
+
     def search(
         self,
         embedding: list[float],

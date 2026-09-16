@@ -11,11 +11,14 @@ dependencies = [
     "open_clip_torch>=2.26,<3",
     "pillow>=10,<12",
     "psycopg[binary]>=3.2,<4",
+    "minio>=7.2,<8",
+    "scenedetect[opencv]>=0.6,<1",
     "torch>=2.2,<3",
 ]
 
 [project.scripts]
 anime-embed = "anime_scene_finder.cli:main"
+anime-index = "anime_scene_finder.index_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -33,6 +33,13 @@ Phase 2 adds `VectorStore` for pgvector inserts and cosine nearest-neighbor
 search. Install dependencies with `python3 -m pip install -e .` before using
 it; PostgreSQL must have the migration applied.
 
+Index a local episode after PostgreSQL and MinIO are available:
+
+```bash
+anime-index --anime Frieren --season 1 --episode 7 \
+  --source /data/anime-source/frieren/season-1/episode-07.mkv
+```
+
 ## Getting Started
 
 1. Copy `.env.example` to `.env`.
