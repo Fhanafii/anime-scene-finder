@@ -12,6 +12,15 @@ class VectorMatch:
     timestamp: float
     object_key: str
     similarity: float
+    anime_id: int
+    anime_title: str
+    episode_id: int
+    season: int
+    episode: int
+    episode_title: str | None
+    scene_start: float
+    scene_end: float
+    scene_representative: float
 
 
 def vector_literal(values: list[float]) -> str:
@@ -59,6 +68,12 @@ class VectorStore:
                 (scene_id, timestamp, object_key, vector_literal(embedding), model, model_version, dimension),
             ).fetchone()
         return row[0]
+
+    def check_connection(self) -> None:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute("SELECT 1").fetchone()
 
     def upsert_episode(
         self, *, title: str, slug: str, season: int, episode: int, episode_title: str | None,
@@ -116,13 +131,18 @@ class VectorStore:
         with psycopg.connect(self.dsn) as connection:
             rows = connection.execute(
                 """
-                SELECT id, scene_id, timestamp, object_key,
-                       1 - (embedding <=> %s::vector) AS similarity
-                FROM scene_frames
-                WHERE embedding_model = %s
-                  AND embedding_model_version = %s
-                  AND embedding_dimension = %s
-                ORDER BY embedding <=> %s::vector
+                SELECT sf.id, sf.scene_id, sf.timestamp, sf.object_key,
+                       1 - (sf.embedding <=> %s::vector) AS similarity,
+                       a.id, a.title, e.id, e.season_number, e.episode_number,
+                       e.title, s.start_time, s.end_time, s.representative_time
+                FROM scene_frames sf
+                JOIN scenes s ON s.id = sf.scene_id
+                JOIN episodes e ON e.id = s.episode_id
+                JOIN anime a ON a.id = e.anime_id
+                WHERE sf.embedding_model = %s
+                  AND sf.embedding_model_version = %s
+                  AND sf.embedding_dimension = %s
+                ORDER BY sf.embedding <=> %s::vector
                 LIMIT %s
                 """,
                 (vector_literal(embedding), model, model_version, dimension, vector_literal(embedding), limit),

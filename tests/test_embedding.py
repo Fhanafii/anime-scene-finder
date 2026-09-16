@@ -1,8 +1,8 @@
 import unittest
 
-from anime_scene_finder.embedding import cosine_similarity
-from anime_scene_finder.vector_store import vector_literal
-from anime_scene_finder.media import representative_times
+from app.embedding import cosine_similarity
+from app.vector_store import vector_literal
+from app.media import representative_times
 
 
 class CosineSimilarityTest(unittest.TestCase):

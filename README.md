@@ -40,6 +40,9 @@ anime-index --anime Frieren --season 1 --episode 7 \
   --source /data/anime-source/frieren/season-1/episode-07.mkv
 ```
 
+Run the API locally with `uvicorn app.main:app --app-dir api` and send a
+`multipart/form-data` upload to `POST /api/v1/search`.
+
 ## Getting Started
 
 1. Copy `.env.example` to `.env`.

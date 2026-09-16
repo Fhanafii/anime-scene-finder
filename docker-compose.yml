@@ -15,6 +15,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET}
+      SEARCH_MAX_IMAGE_BYTES: ${SEARCH_MAX_IMAGE_BYTES}
     ports:
       - "8000:8000"
     healthcheck:
