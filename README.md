@@ -29,6 +29,10 @@ anime-embed path/to/query.jpg path/to/candidate.jpg
 The command prints the embedding dimension and cosine similarity. The model is
 loaded once per process and uses CPU by default when CUDA is unavailable.
 
+Phase 2 adds `VectorStore` for pgvector inserts and cosine nearest-neighbor
+search. Install dependencies with `python3 -m pip install -e .` before using
+it; PostgreSQL must have the migration applied.
+
 ## Getting Started
 
 1. Copy `.env.example` to `.env`.
