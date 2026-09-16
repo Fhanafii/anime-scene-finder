@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anime-scene-finder"
+version = "0.1.0"
+description = "Anime scene search embedding pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "open_clip_torch>=2.26,<3",
+    "pillow>=10,<12",
+    "torch>=2.2,<3",
+]
+
+[project.scripts]
+anime-embed = "anime_scene_finder.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
