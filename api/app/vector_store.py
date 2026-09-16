@@ -75,6 +75,69 @@ class VectorStore:
         with psycopg.connect(self.dsn) as connection:
             connection.execute("SELECT 1").fetchone()
 
+    def start_or_resume_job(self, episode_id: int, total_scenes: int) -> int:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            row = connection.execute(
+                """SELECT id FROM indexing_jobs
+                WHERE episode_id = %s AND status IN ('PENDING', 'PROCESSING')
+                ORDER BY id DESC LIMIT 1""", (episode_id,)
+            ).fetchone()
+            if row:
+                job_id = row[0]
+                connection.execute(
+                    """UPDATE indexing_jobs SET status = 'PROCESSING', total_scenes = %s,
+                    started_at = COALESCE(started_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s""", (total_scenes, job_id)
+                )
+                return job_id
+            return connection.execute(
+                """INSERT INTO indexing_jobs (episode_id, status, total_scenes, started_at)
+                VALUES (%s, 'PROCESSING', %s, CURRENT_TIMESTAMP) RETURNING id""",
+                (episode_id, total_scenes),
+            ).fetchone()[0]
+
+    def scene_frame_count(self, scene_id: int, model: str, model_version: str) -> int:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            return connection.execute(
+                """SELECT count(*) FROM scene_frames
+                WHERE scene_id = %s AND embedding_model = %s AND embedding_model_version = %s""",
+                (scene_id, model, model_version),
+            ).fetchone()[0]
+
+    def mark_scene_processed(self, job_id: int, scene_index: int, frame_count: int) -> None:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                """UPDATE indexing_jobs SET processed_scenes = GREATEST(processed_scenes, %s),
+                processed_frames = GREATEST(processed_frames, (%s * %s)),
+                progress = LEAST(1.0, GREATEST(processed_scenes, %s)::float / NULLIF(total_scenes, 0)),
+                updated_at = CURRENT_TIMESTAMP WHERE id = %s""",
+                (scene_index + 1, scene_index + 1, frame_count, scene_index + 1, job_id),
+            )
+
+    def complete_job(self, job_id: int) -> None:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                """UPDATE indexing_jobs SET status = 'COMPLETED', progress = 1.0,
+                completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = %s""", (job_id,)
+            )
+
+    def fail_job(self, job_id: int, message: str) -> None:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                """UPDATE indexing_jobs SET status = 'FAILED', error_message = %s,
+                updated_at = CURRENT_TIMESTAMP WHERE id = %s""", (message[:1000], job_id)
+            )
+
     def upsert_episode(
         self, *, title: str, slug: str, season: int, episode: int, episode_title: str | None,
         duration: float, source_identifier: str,

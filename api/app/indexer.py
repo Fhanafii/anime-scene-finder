@@ -17,6 +17,7 @@ class IndexRequest:
     episode: int
     source: Path
     title: str | None = None
+    retries: int = 0
 
 
 def slugify(value: str) -> str:
@@ -41,19 +42,31 @@ def index_episode(request: IndexRequest) -> int:
     )
     del anime_id
 
-    for scene_index, (start, end) in enumerate(detect_scenes(request.source)):
-        scene_id = store.insert_scene(episode_id, scene_index, start, end, (start + end) / 2)
-        for frame_index, timestamp in enumerate(representative_times(start, end)):
-            object_key = f"{slugify(request.anime)}/s{request.season:02d}/e{request.episode:03d}/scene-{scene_index:05d}-{frame_index}.jpg"
-            frame_path = request.source.parent / ".keyframes" / object_key
-            extract_frame(request.source, timestamp, frame_path)
-            object_store.upload(frame_path, object_key)
-            store.insert_frame(
-                scene_id=scene_id,
-                timestamp=timestamp,
-                object_key=object_key,
-                embedding=embedder.encode(frame_path),
-                model=embedder.config.model_name,
-                model_version=embedder.config.pretrained,
-            )
+    scenes = detect_scenes(request.source)
+    job_id = store.start_or_resume_job(episode_id, len(scenes))
+    try:
+        for scene_index, (start, end) in enumerate(scenes):
+            scene_id = store.insert_scene(episode_id, scene_index, start, end, (start + end) / 2)
+            timestamps = representative_times(start, end)
+            if store.scene_frame_count(scene_id, embedder.config.model_name, embedder.config.pretrained) >= len(timestamps):
+                store.mark_scene_processed(job_id, scene_index, len(timestamps))
+                continue
+            for frame_index, timestamp in enumerate(timestamps):
+                object_key = f"{slugify(request.anime)}/s{request.season:02d}/e{request.episode:03d}/scene-{scene_index:05d}-{frame_index}.jpg"
+                frame_path = request.source.parent / ".keyframes" / object_key
+                extract_frame(request.source, timestamp, frame_path)
+                object_store.upload(frame_path, object_key)
+                store.insert_frame(
+                    scene_id=scene_id,
+                    timestamp=timestamp,
+                    object_key=object_key,
+                    embedding=embedder.encode(frame_path),
+                    model=embedder.config.model_name,
+                    model_version=embedder.config.pretrained,
+                )
+            store.mark_scene_processed(job_id, scene_index, len(timestamps))
+        store.complete_job(job_id)
+    except Exception as exc:
+        store.fail_job(job_id, str(exc))
+        raise
     return episode_id
