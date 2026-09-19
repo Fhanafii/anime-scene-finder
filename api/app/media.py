@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import json
 from pathlib import Path
 
 
@@ -12,6 +13,25 @@ def video_duration(source: Path) -> float:
         text=True,
     )
     return float(result.stdout.strip())
+
+
+def video_metadata(source: Path) -> dict[str, int | float | str]:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=width,height,avg_frame_rate,codec_name", "-show_entries", "format=duration",
+         "-of", "json", str(source)], check=True, capture_output=True, text=True,
+    )
+    payload = json.loads(result.stdout)
+    streams = payload.get("streams", [])
+    if not streams:
+        raise ValueError("video stream not found")
+    stream = streams[0]
+    rate = stream.get("avg_frame_rate", "0/1").split("/")
+    fps = float(rate[0]) / float(rate[1]) if len(rate) == 2 and float(rate[1]) else 0.0
+    duration = float(payload.get("format", {}).get("duration", 0))
+    if duration <= 0:
+        raise ValueError("video duration must be positive")
+    return {"duration": duration, "width": int(stream.get("width", 0)), "height": int(stream.get("height", 0)), "fps": fps, "codec": stream.get("codec_name", "unknown")}
 
 
 def detect_scenes(source: Path) -> list[tuple[float, float]]:

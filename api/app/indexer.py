@@ -21,6 +21,7 @@ class IndexRequest:
     source: Path
     title: str | None = None
     retries: int = 0
+    force_reindex: bool = False
 
 
 def slugify(value: str) -> str:
@@ -44,12 +45,19 @@ def index_episode(request: IndexRequest) -> int:
         episode=request.episode,
         episode_title=request.title,
         duration=source_metadata["duration"],
+        width=source_metadata["width"],
+        height=source_metadata["height"],
+        fps=source_metadata["fps"],
+        codec=source_metadata["codec"],
         source_identifier=str(request.source),
         source_path=str(request.source),
         source_checksum=source_checksum,
         source_size=request.source.stat().st_size,
     )
     del anime_id
+
+    if store.completed_job_exists(episode_id) and not request.force_reindex:
+        raise ValueError("episode is already indexed; use --force-reindex to run it again")
 
     scenes = detect_scenes(request.source)
     job_id = store.start_or_resume_job(

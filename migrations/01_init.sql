@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS episodes (
     source_path TEXT,
     source_checksum VARCHAR(64),
     source_size BIGINT,
+    width INT,
+    height INT,
+    fps DOUBLE PRECISION,
+    codec VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uniq_anime_episode UNIQUE (anime_id, season_number, episode_number)

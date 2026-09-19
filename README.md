@@ -82,6 +82,13 @@ Worker membaca source secara read-only dari struktur berikut di server:
         └── episode-07.mkv
 ```
 
+Folder `data/anime-source/` dan `data/processing/` di project di-ignore agar video dan artefak processing tidak masuk Git. Tambahkan source yang Anda miliki sendiri, misalnya:
+
+```bash
+mkdir -p data/anime-source/frieren/season-01
+cp /path/to/episode-01.mkv data/anime-source/frieren/season-01/episode-01.mkv
+```
+
 Nama folder harus memuat pola `season-01` dan nama file harus memuat pola `episode-07` agar FZF dapat membaca metadata otomatis.
 
 ### 2. Jalankan FZF operator
@@ -90,6 +97,12 @@ FZF memilih source lokal, memverifikasi file/video, lalu mengirim job ke Redis. 
 
 ```bash
 docker compose --profile local run --rm index-cli anime-index-ui
+```
+
+FZF berjalan di container image, bukan dari Python host. Jika source belum ada, command akan berhenti dengan `no anime directories found`; jika ingin memastikan binary tersedia:
+
+```bash
+docker compose --profile local run --rm index-cli fzf --version
 ```
 
 ### 3. Alternatif: queue melalui CLI
@@ -126,7 +139,16 @@ Job dapat dilanjutkan setelah worker restart. Scene/frame memakai identity const
 
 ### 4. Reindex
 
-Reindex dilakukan secara eksplisit dengan menjalankan command queue kembali untuk episode yang dipilih. Jangan menjalankan reindex massal tanpa kebutuhan karena proses embedding/OCR dapat memakan waktu dan resource.
+Reindex harus eksplisit menggunakan `--force-reindex`:
+
+```bash
+docker compose --profile local run --rm index-cli \
+  anime-index --queue --force-reindex \
+  --anime Frieren --season 1 --episode 7 \
+  --source /data/anime-source/frieren/season-01/episode-07.mkv
+```
+
+Jangan menjalankan reindex massal tanpa kebutuhan karena proses embedding/OCR dapat memakan waktu dan resource.
 
 ## Search API
 

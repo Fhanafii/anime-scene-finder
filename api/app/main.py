@@ -3,9 +3,12 @@ from __future__ import annotations
 import io
 import os
 import tempfile
+import logging
+import time
+import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Query, UploadFile
+from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from PIL import Image, UnidentifiedImageError
 
@@ -23,12 +26,21 @@ SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "50"))
 SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "10"))
 
 app = FastAPI(title="Anime Scene Finder")
+logger = logging.getLogger("anime_scene_finder.api")
 embedder = ImageEmbedder()
 store = VectorStore(os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/anime_scene_finder"))
 ocr = TesseractOCR()
 objects = ObjectStore()
 
 
+@app.middleware("http")
+async def request_logging(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    started = time.perf_counter()
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    logger.info("request_id=%s method=%s path=%s status=%s duration_ms=%.2f", request_id, request.method, request.url.path, response.status_code, (time.perf_counter() - started) * 1000)
+    return response
 def error(code: str, message: str, status: int) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
@@ -42,7 +54,9 @@ def health() -> dict[str, str]:
 def readiness() -> JSONResponse:
     try:
         store.check_connection()
+        objects.check_connection()
         embedder._load()
+        ocr.version
     except Exception:
         return error("SERVICE_UNAVAILABLE", "Search service is not ready.", 503)
     return JSONResponse({"status": "ready"})

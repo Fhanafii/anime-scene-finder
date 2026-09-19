@@ -30,3 +30,8 @@ class ObjectStore:
         finally:
             response.close()
             response.release_conn()
+
+    def check_connection(self) -> None:
+        from minio import Minio
+
+        Minio(self.endpoint, access_key=self.access_key, secret_key=self.secret_key, secure=False).bucket_exists(self.bucket)

@@ -155,6 +155,15 @@ class VectorStore:
                 (episode_id, total_scenes, embedding_model, embedding_version, ocr_engine, ocr_version),
             ).fetchone()[0]
 
+    def completed_job_exists(self, episode_id: int) -> bool:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            return connection.execute(
+                "SELECT EXISTS (SELECT 1 FROM indexing_jobs WHERE episode_id = %s AND status = 'COMPLETED')",
+                (episode_id,),
+            ).fetchone()[0]
+
     def scene_frame_count(self, scene_id: int, model: str, model_version: str) -> int:
         import psycopg
 
@@ -198,6 +207,7 @@ class VectorStore:
     def upsert_episode(
         self, *, title: str, slug: str, season: int, episode: int, episode_title: str | None,
         duration: float, source_identifier: str, source_path: str, source_checksum: str, source_size: int,
+        width: int, height: int, fps: float, codec: str,
     ) -> tuple[int, int]:
         import psycopg
 
@@ -210,17 +220,19 @@ class VectorStore:
             episode_id = connection.execute(
                 """INSERT INTO episodes
                     (anime_id, season_number, episode_number, title, duration_seconds, source_identifier,
-                     source_path, source_checksum, source_size)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     source_path, source_checksum, source_size, width, height, fps, codec)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (anime_id, season_number, episode_number)
                 DO UPDATE SET title = EXCLUDED.title, duration_seconds = EXCLUDED.duration_seconds,
                               source_identifier = EXCLUDED.source_identifier,
                               source_path = EXCLUDED.source_path,
                               source_checksum = EXCLUDED.source_checksum,
-                              source_size = EXCLUDED.source_size
+                              source_size = EXCLUDED.source_size,
+                              width = EXCLUDED.width, height = EXCLUDED.height,
+                              fps = EXCLUDED.fps, codec = EXCLUDED.codec
                 RETURNING id""",
                 (anime_id, season, episode, episode_title, duration, source_identifier,
-                 source_path, source_checksum, source_size),
+                 source_path, source_checksum, source_size, width, height, fps, codec),
             ).fetchone()[0]
         return anime_id, episode_id
 

@@ -12,7 +12,15 @@ def main() -> None:
                 index_episode(request)
             except Exception:
                 if request.retries < 3:
-                    enqueue(request.__class__(request.anime, request.season, request.episode, request.source, request.title, request.retries + 1))
+                    enqueue(request.__class__(
+                        anime=request.anime,
+                        season=request.season,
+                        episode=request.episode,
+                        source=request.source,
+                        title=request.title,
+                        retries=request.retries + 1,
+                        force_reindex=request.force_reindex,
+                    ))
 
 
 if __name__ == "__main__":

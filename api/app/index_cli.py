@@ -15,8 +15,9 @@ def main() -> None:
     parser.add_argument("--source", required=True)
     parser.add_argument("--title")
     parser.add_argument("--queue", action="store_true", help="enqueue for anime-worker")
+    parser.add_argument("--force-reindex", action="store_true")
     args = parser.parse_args()
-    request = IndexRequest(args.anime, args.season, args.episode, Path(args.source), args.title)
+    request = IndexRequest(args.anime, args.season, args.episode, Path(args.source), args.title, 0, args.force_reindex)
     if args.queue:
         enqueue(request)
         return
