@@ -9,6 +9,7 @@ from .embedding import ImageEmbedder
 from .media import detect_scenes, extract_frame, representative_times, video_duration
 from .object_store import ObjectStore
 from .ocr import TesseractOCR
+from .source import verify_source
 from .vector_store import VectorStore
 
 
@@ -27,8 +28,7 @@ def slugify(value: str) -> str:
 
 
 def index_episode(request: IndexRequest) -> int:
-    if not request.source.is_file():
-        raise FileNotFoundError(request.source)
+    source_metadata = verify_source(request.source)
 
     store = VectorStore()
     object_store = ObjectStore()
@@ -43,7 +43,7 @@ def index_episode(request: IndexRequest) -> int:
         season=request.season,
         episode=request.episode,
         episode_title=request.title,
-        duration=video_duration(request.source),
+        duration=source_metadata["duration"],
         source_identifier=str(request.source),
         source_path=str(request.source),
         source_checksum=source_checksum,

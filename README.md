@@ -51,6 +51,11 @@ anime-index --queue --anime Frieren --season 1 --episode 7 \
 anime-worker
 ```
 
+For the v2 Docker stack, copy `.env.example` to `.env` and run
+`docker compose up -d --build`. Public local ingress is
+`http://127.0.0.1:8090`; API, PostgreSQL, Redis, and MinIO stay on the private
+Docker network. Use `--profile local` to start the FZF operator container.
+
 ## Getting Started
 
 1. Copy `.env.example` to `.env`.

@@ -86,6 +86,45 @@ class VectorStore:
         with psycopg.connect(self.dsn) as connection:
             connection.execute("SELECT 1").fetchone()
 
+    def get_scene(self, scene_id: int) -> dict | None:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            row = connection.execute(
+                """SELECT s.id, s.start_time, s.end_time, s.representative_time,
+                e.id, e.season_number, e.episode_number, e.title,
+                a.id, a.title
+                FROM scenes s JOIN episodes e ON e.id = s.episode_id JOIN anime a ON a.id = e.anime_id
+                WHERE s.id = %s""", (scene_id,)
+            ).fetchone()
+            if not row:
+                return None
+            thumbnail = connection.execute(
+                "SELECT object_key FROM scene_frames WHERE scene_id = %s ORDER BY timestamp LIMIT 1", (scene_id,)
+            ).fetchone()
+        return {
+            "id": row[0], "start_time": row[1], "end_time": row[2], "representative_time": row[3],
+            "episode": {"id": row[4], "season": row[5], "episode": row[6], "title": row[7]},
+            "anime": {"id": row[8], "title": row[9]}, "object_key": thumbnail[0] if thumbnail else None,
+        }
+
+    def get_anime(self, anime_id: int) -> dict | None:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            row = connection.execute("SELECT id, title, slug FROM anime WHERE id = %s", (anime_id,)).fetchone()
+        return {"id": row[0], "title": row[1], "slug": row[2]} if row else None
+
+    def get_episodes(self, anime_id: int) -> list[dict]:
+        import psycopg
+
+        with psycopg.connect(self.dsn) as connection:
+            rows = connection.execute(
+                """SELECT id, season_number, episode_number, title, duration_seconds
+                FROM episodes WHERE anime_id = %s ORDER BY season_number, episode_number""", (anime_id,)
+            ).fetchall()
+        return [{"id": row[0], "season": row[1], "episode": row[2], "title": row[3], "duration": row[4]} for row in rows]
+
     def start_or_resume_job(
         self, episode_id: int, total_scenes: int, embedding_model: str, embedding_version: str,
         ocr_engine: str, ocr_version: str,

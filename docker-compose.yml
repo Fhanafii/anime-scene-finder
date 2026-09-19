@@ -1,14 +1,28 @@
 services:
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${NGINX_PORT}:80"
+    networks: [public, backend]
 
   api:
-    build: ./api
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      minio:
         condition: service_started
-    environment:
+    expose: ["8000"]
+    environment: &app-env
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT}
@@ -16,41 +30,59 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET}
       SEARCH_MAX_IMAGE_BYTES: ${SEARCH_MAX_IMAGE_BYTES}
+      SEARCH_MAX_IMAGE_DIMENSION: ${SEARCH_MAX_IMAGE_DIMENSION}
+      SEARCH_TOP_K: ${SEARCH_TOP_K}
+      SEARCH_RESULT_LIMIT: ${SEARCH_RESULT_LIMIT}
       OCR_ENGINE: ${OCR_ENGINE}
       OCR_LANGUAGE: ${OCR_LANGUAGE}
       VISUAL_SCORE_WEIGHT: ${VISUAL_SCORE_WEIGHT}
       OCR_SCORE_WEIGHT: ${OCR_SCORE_WEIGHT}
-    ports:
-      - "${API_PORT}:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
+    networks: [backend]
 
   worker:
-    build: ./worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["anime-worker"]
     restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
-      - minio
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
     volumes:
       - ./data/anime-source:/data/anime-source:ro
+      - ./data/processing:/data/processing
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_BUCKET: ${MINIO_BUCKET}
+      <<: *app-env
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME}
       EMBEDDING_PRETRAINED: ${EMBEDDING_PRETRAINED}
       EMBEDDING_DEVICE: ${EMBEDDING_DEVICE}
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE}
-      OCR_ENGINE: ${OCR_ENGINE}
-      OCR_LANGUAGE: ${OCR_LANGUAGE}
+    networks: [backend]
+
+  index-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["sleep", "infinity"]
+    profiles: [local]
+    depends_on:
+      - redis
+    volumes:
+      - ./data/anime-source:/data/anime-source:ro
+    environment:
+      <<: *app-env
+      SOURCE_ROOT: /data/anime-source
+    networks: [backend]
 
   postgres:
     image: pgvector/pgvector:pg17
@@ -59,24 +91,22 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d anime_scene_finder"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks: [backend]
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "${REDIS_PORT}:6379"
     volumes:
       - redis_data:/data
+    networks: [backend]
 
   minio:
     image: minio/minio
@@ -85,13 +115,15 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-    ports:
-      - "${MINIO_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
     volumes:
       - minio_data:/data
+    networks: [backend]
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+
+networks:
+  public:
+  backend:

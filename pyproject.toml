@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anime-scene-finder"
-version = "0.7.0"
+version = "0.8.0"
 description = "Anime scene search embedding pipeline"
 requires-python = ">=3.12"
 dependencies = [
@@ -24,6 +24,7 @@ dependencies = [
 anime-embed = "app.cli:main"
 anime-index = "app.index_cli:main"
 anime-worker = "app.worker_cli:main"
+anime-index-ui = "app.fzf_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["api"]
