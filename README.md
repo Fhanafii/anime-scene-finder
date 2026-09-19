@@ -1,5 +1,20 @@
 # Anime Scene Finder
 
+<p align="center">
+  <img src="assets/AniScene.svg" alt="AniScene — by FHANA Labs" width="360"/>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white" alt="Python 3.12+" />
+  <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/OpenCLIP-PyTorch-EE4C2C?logo=pytorch&logoColor=white" alt="OpenCLIP with PyTorch" />
+  <img src="https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL and pgvector" />
+  <img src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white" alt="Redis 7" />
+  <img src="https://img.shields.io/badge/MinIO-object%20storage-C72E49?logo=minio&logoColor=white" alt="MinIO" />
+  <img src="https://img.shields.io/badge/Nginx-reverse%20proxy-009639?logo=nginx&logoColor=white" alt="Nginx" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose" />
+</p>
+
 Backend system to search anime episode and timestamp based on screenshot queries, featuring separate Indexing Pipeline (local/private) and Search Pipeline (public REST API).
 
 ## Tech Stack
@@ -65,5 +80,5 @@ Docker network. Use `--profile local` to start the FZF operator container.
    ```
 3. Check health:
    ```bash
-   curl http://localhost:8000/health
+   curl http://127.0.0.1:8090/health
    ```

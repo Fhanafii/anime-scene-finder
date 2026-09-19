@@ -1,0 +1,74 @@
+name: Backend Auto Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ vars.APP_DIR }}
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DEV_SERVER_PORT || 22 }}
+          envs: APP_DIR
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR="${APP_DIR:-$HOME/anime-scene-finder}"
+            cd "$APP_DIR"
+
+            echo "==> Pull main"
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+
+            echo "==> Validate Compose configuration"
+            docker compose config -q
+
+            echo "==> Build and restart services"
+            docker compose up -d --build --remove-orphans
+
+            echo "==> Apply idempotent v2 migration"
+            docker compose exec -T postgres sh -c \
+              'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /docker-entrypoint-initdb.d/02_v2_ocr.sql'
+
+            echo "==> Wait for Nginx/API health"
+            NGINX_PORT="$(docker compose port nginx 80 | tail -n 1 | sed 's/.*://')"
+            for i in $(seq 1 30); do
+              if curl --fail --silent "http://127.0.0.1:${NGINX_PORT}/health" >/dev/null; then
+                echo "API healthy after ${i} attempts"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                docker compose ps
+                docker compose logs --tail=100 nginx api worker
+                exit 1
+              fi
+              sleep 3
+            done
+
+            echo "==> Remove unused images"
+            docker image prune -f
+            docker compose ps
