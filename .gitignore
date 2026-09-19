@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.env
 /data/anime-source/*
 !/data/anime-source/.gitkeep
 /data/processing/*
