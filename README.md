@@ -1,4 +1,4 @@
-# Anime Scene Finder
+# Anime Scene Finder Backend
 
 <p align="center">
   <img src="assets/AniScene.svg" alt="AniScene — by FHANA Labs" width="360"/>
@@ -15,70 +15,247 @@
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose" />
 </p>
 
-Backend system to search anime episode and timestamp based on screenshot queries, featuring separate Indexing Pipeline (local/private) and Search Pipeline (public REST API).
+Backend untuk mencari anime, episode, scene, dan timestamp dari screenshot. Indexing berjalan private/local; hanya Search API yang diekspos melalui Cloudflare Tunnel → Nginx → FastAPI.
 
-## Tech Stack
-- Python 3.12+, FastAPI, Pydantic, Uvicorn
-- OpenCLIP (pretrained image embedding)
-- PostgreSQL + pgvector
-- MinIO (object storage for keyframes/thumbnails)
-- Redis (job queue for indexing)
-- Docker & Docker Compose
+## Arsitektur
 
-## Local embedding proof of concept
+```text
+Cloudflare Tunnel
+        ↓
+Nginx :80 (host: 127.0.0.1:8090)
+        ↓
+FastAPI :8000
+   ├── OpenCLIP + OCR
+   └── PostgreSQL + pgvector
 
-Install the package in a virtual environment:
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install -e .
+FZF / anime-index
+        ↓ Redis
+Index Worker
+   ├── FFmpeg + scene detection
+   ├── OpenCLIP + Tesseract OCR
+   └── MinIO + PostgreSQL
 ```
 
-Compare two images with the same OpenCLIP preprocessing and model:
+## Menjalankan Docker
 
-```bash
-anime-embed path/to/query.jpg path/to/candidate.jpg
-```
+Prasyarat: Docker, Docker Compose, source anime yang legal untuk diproses, dan Cloudflare Tunnel yang sudah tersedia.
 
-The command prints the embedding dimension and cosine similarity. The model is
-loaded once per process and uses CPU by default when CUDA is unavailable.
+1. Buat konfigurasi lokal dari template. Jangan commit file `.env`.
 
-Phase 2 adds `VectorStore` for pgvector inserts and cosine nearest-neighbor
-search. Install dependencies with `python3 -m pip install -e .` before using
-it; PostgreSQL must have the migration applied.
+   ```bash
+   cp .env.example .env
+   ```
 
-Index a local episode after PostgreSQL and MinIO are available:
+2. Isi konfigurasi lokal/credential pada `.env`, lalu build dan start:
 
-```bash
-anime-index --anime Frieren --season 1 --episode 7 \
-  --source /data/anime-source/frieren/season-1/episode-07.mkv
-```
-
-Run the API locally with `uvicorn app.main:app --app-dir api` and send a
-`multipart/form-data` upload to `POST /api/v1/search`.
-
-Queue indexing through Redis and run the resumable worker:
-
-```bash
-anime-index --queue --anime Frieren --season 1 --episode 7 \
-  --source /data/anime-source/frieren/season-1/episode-07.mkv
-anime-worker
-```
-
-For the v2 Docker stack, copy `.env.example` to `.env` and run
-`docker compose up -d --build`. Public local ingress is
-`http://127.0.0.1:8090`; API, PostgreSQL, Redis, and MinIO stay on the private
-Docker network. Use `--profile local` to start the FZF operator container.
-
-## Getting Started
-
-1. Copy `.env.example` to `.env`.
-2. Start services with Docker Compose:
    ```bash
    docker compose up -d --build
    ```
-3. Check health:
+
+3. Periksa service:
+
    ```bash
+   docker compose ps
+   docker compose logs -f api worker nginx
    curl http://127.0.0.1:8090/health
    ```
+
+4. Konfigurasi Cloudflare hostname:
+
+   ```text
+   Hostname: anisceneapi.fhanalabs.site
+   Service:  http://127.0.0.1:8090
+   ```
+
+   Cloudflare Tunnel tetap menjadi public entrypoint; port internal PostgreSQL, Redis, MinIO, dan FastAPI tidak dipublish ke host.
+
+## Indexing pipeline
+
+### 1. Siapkan source video
+
+Worker membaca source secara read-only dari struktur berikut di server:
+
+```text
+/data/anime-source/
+└── frieren/
+    └── season-01/
+        └── episode-07.mkv
+```
+
+Nama folder harus memuat pola `season-01` dan nama file harus memuat pola `episode-07` agar FZF dapat membaca metadata otomatis.
+
+### 2. Jalankan FZF operator
+
+FZF memilih source lokal, memverifikasi file/video, lalu mengirim job ke Redis. Indexing tetap dikerjakan worker di background.
+
+```bash
+docker compose --profile local run --rm index-cli anime-index-ui
+```
+
+### 3. Alternatif: queue melalui CLI
+
+```bash
+docker compose --profile local run --rm index-cli \
+  anime-index --queue \
+  --anime Frieren \
+  --season 1 \
+  --episode 7 \
+  --source /data/anime-source/frieren/season-01/episode-07.mkv
+```
+
+Worker yang sedang berjalan akan mengambil job dari Redis:
+
+```bash
+docker compose logs -f worker
+```
+
+Pipeline yang dijalankan:
+
+```text
+validate source
+  → video metadata/checksum
+  → scene detection
+  → 3 representative keyframes per scene
+  → OpenCLIP embedding
+  → Tesseract OCR
+  → upload keyframes ke MinIO
+  → simpan metadata/vector/OCR ke PostgreSQL
+```
+
+Job dapat dilanjutkan setelah worker restart. Scene/frame memakai identity constraint sehingga retry tidak membuat duplicate record.
+
+### 4. Reindex
+
+Reindex dilakukan secara eksplisit dengan menjalankan command queue kembali untuk episode yang dipilih. Jangan menjalankan reindex massal tanpa kebutuhan karena proses embedding/OCR dapat memakan waktu dan resource.
+
+## Search API
+
+Base URL publik:
+
+```text
+https://anisceneapi.fhanalabs.site
+```
+
+### Health
+
+```bash
+curl https://anisceneapi.fhanalabs.site/health
+```
+
+Response:
+
+```json
+{"status":"ok"}
+```
+
+Readiness internal:
+
+```bash
+curl https://anisceneapi.fhanalabs.site/health/ready
+```
+
+### Search screenshot
+
+Endpoint menerima `multipart/form-data` dengan field `image`. Field `limit` opsional, default 10 dan maksimum 50.
+
+```bash
+curl -X POST https://anisceneapi.fhanalabs.site/api/v1/search \
+  -F "image=@./screenshot.jpg" \
+  -F "limit=10"
+```
+
+Format response:
+
+```json
+{
+  "query": {
+    "type": "image",
+    "ocr_text": "example subtitle"
+  },
+  "results": [
+    {
+      "anime": {
+        "id": "1",
+        "title": "Frieren"
+      },
+      "episode": {
+        "id": "7",
+        "season": 1,
+        "episode": 7,
+        "title": "Episode title"
+      },
+      "scene": {
+        "id": "42",
+        "start_time": 755.2,
+        "end_time": 778.8,
+        "representative_time": 766.4
+      },
+      "match": {
+        "timestamp": 766.4,
+        "visual_score": 0.9231,
+        "ocr_score": 0.81,
+        "final_score": 0.9005
+      },
+      "thumbnail_url": "/api/v1/scenes/42/thumbnail"
+    }
+  ]
+}
+```
+
+Score adalah ranking signal teknis, bukan probabilitas kebenaran.
+
+### Public routes
+
+```text
+GET  /health
+GET  /health/ready
+POST /api/v1/search
+GET  /api/v1/scenes/{scene_id}
+GET  /api/v1/scenes/{scene_id}/thumbnail
+GET  /api/v1/anime/{anime_id}
+GET  /api/v1/anime/{anime_id}/episodes
+```
+
+Tidak ada public endpoint untuk upload raw video, download source, membuat job indexing, reindex, atau menghapus index.
+
+## Local development
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -e .
+PYTHONPATH=api python3 -m unittest discover -s tests -v
+PYTHONPATH=api uvicorn app.main:app --app-dir api --reload
+```
+
+CLI yang tersedia:
+
+```text
+anime-embed       Compare two image embeddings
+anime-index       Index or queue one episode
+anime-worker      Consume Redis indexing jobs
+anime-index-ui    Browse local sources with FZF
+```
+
+## CI/CD
+
+Push ke branch `main` menjalankan `.github/workflows/deploy.yml`. Workflow melakukan pull `origin/main`, validasi Compose, build image, restart service, menjalankan migration idempotent, lalu mengecek `/health` melalui Nginx.
+
+Secrets GitHub yang dibutuhkan:
+
+```text
+TS_OAUTH_CLIENT_ID
+TS_OAUTH_SECRET
+DEV_SERVER_HOST
+DEV_SERVER_USER
+DEV_SSH_PRIVATE_KEY
+DEV_SERVER_PORT (opsional)
+```
+
+Repository variable opsional:
+
+```text
+APP_DIR
+```
+
+Default deployment directory adalah `$HOME/anime-scene-finder`.
