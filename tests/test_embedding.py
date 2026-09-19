@@ -5,6 +5,8 @@ from app.vector_store import vector_literal
 from app.media import representative_times
 from app.aggregation import aggregate_scene_matches
 from app.vector_store import VectorMatch
+from app.hybrid import fuse_scores
+from app.ocr import normalize_text, text_similarity
 
 
 class CosineSimilarityTest(unittest.TestCase):
@@ -35,6 +37,15 @@ class SceneAggregationTest(unittest.TestCase):
         self.assertEqual([candidate.match.scene_id for candidate in results], [10, 11])
         self.assertEqual(results[0].match.frame_id, 2)
         self.assertEqual(results[0].frame_count, 2)
+
+
+class HybridSearchTest(unittest.TestCase):
+    def test_ocr_signal_boosts_matching_candidate(self):
+        self.assertEqual(normalize_text("Hello, WORLD!"), "hello world")
+        self.assertEqual(text_similarity("hello", "hello world"), 1.0)
+        ocr_score, final_score = fuse_scores(0.5, "hello", "hello world")
+        self.assertEqual(ocr_score, 1.0)
+        self.assertAlmostEqual(final_score, 0.6)
 
 
 if __name__ == "__main__":

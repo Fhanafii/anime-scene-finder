@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
 from .embedding import ImageEmbedder
 from .media import detect_scenes, extract_frame, representative_times, video_duration
 from .object_store import ObjectStore
+from .ocr import TesseractOCR
 from .vector_store import VectorStore
 
 
@@ -31,6 +33,10 @@ def index_episode(request: IndexRequest) -> int:
     store = VectorStore()
     object_store = ObjectStore()
     embedder = ImageEmbedder()
+    ocr = TesseractOCR()
+    ocr_version = ocr.version
+    with request.source.open("rb") as source_file:
+        source_checksum = hashlib.file_digest(source_file, "sha256").hexdigest()
     anime_id, episode_id = store.upsert_episode(
         title=request.anime,
         slug=slugify(request.anime),
@@ -39,11 +45,21 @@ def index_episode(request: IndexRequest) -> int:
         episode_title=request.title,
         duration=video_duration(request.source),
         source_identifier=str(request.source),
+        source_path=str(request.source),
+        source_checksum=source_checksum,
+        source_size=request.source.stat().st_size,
     )
     del anime_id
 
     scenes = detect_scenes(request.source)
-    job_id = store.start_or_resume_job(episode_id, len(scenes))
+    job_id = store.start_or_resume_job(
+        episode_id,
+        len(scenes),
+        embedder.config.model_name,
+        embedder.config.pretrained,
+        ocr.engine,
+        ocr_version,
+    )
     try:
         for scene_index, (start, end) in enumerate(scenes):
             scene_id = store.insert_scene(episode_id, scene_index, start, end, (start + end) / 2)
@@ -56,6 +72,7 @@ def index_episode(request: IndexRequest) -> int:
                 frame_path = request.source.parent / ".keyframes" / object_key
                 extract_frame(request.source, timestamp, frame_path)
                 object_store.upload(frame_path, object_key)
+                ocr_text = ocr.extract(frame_path)
                 store.insert_frame(
                     scene_id=scene_id,
                     timestamp=timestamp,
@@ -63,6 +80,9 @@ def index_episode(request: IndexRequest) -> int:
                     embedding=embedder.encode(frame_path),
                     model=embedder.config.model_name,
                     model_version=embedder.config.pretrained,
+                    ocr_text=ocr_text,
+                    ocr_engine=ocr.engine,
+                    ocr_engine_version=ocr_version,
                 )
             store.mark_scene_processed(job_id, scene_index, len(timestamps))
         store.complete_job(job_id)

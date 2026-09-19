@@ -1,0 +1,12 @@
+ALTER TABLE episodes ADD COLUMN IF NOT EXISTS source_path TEXT;
+ALTER TABLE episodes ADD COLUMN IF NOT EXISTS source_checksum VARCHAR(64);
+ALTER TABLE episodes ADD COLUMN IF NOT EXISTS source_size BIGINT;
+
+ALTER TABLE scene_frames ADD COLUMN IF NOT EXISTS ocr_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE scene_frames ADD COLUMN IF NOT EXISTS ocr_engine VARCHAR(100);
+ALTER TABLE scene_frames ADD COLUMN IF NOT EXISTS ocr_engine_version VARCHAR(100);
+
+ALTER TABLE indexing_jobs ADD COLUMN IF NOT EXISTS embedding_model VARCHAR(100);
+ALTER TABLE indexing_jobs ADD COLUMN IF NOT EXISTS embedding_model_version VARCHAR(50);
+ALTER TABLE indexing_jobs ADD COLUMN IF NOT EXISTS ocr_engine VARCHAR(100);
+ALTER TABLE indexing_jobs ADD COLUMN IF NOT EXISTS ocr_engine_version VARCHAR(100);

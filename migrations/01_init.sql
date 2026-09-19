@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS episodes (
     title VARCHAR(255),
     duration_seconds FLOAT,
     source_identifier TEXT,
+    source_path TEXT,
+    source_checksum VARCHAR(64),
+    source_size BIGINT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uniq_anime_episode UNIQUE (anime_id, season_number, episode_number)
@@ -48,6 +51,9 @@ CREATE TABLE IF NOT EXISTS scene_frames (
     embedding_model VARCHAR(100) NOT NULL,
     embedding_model_version VARCHAR(50) NOT NULL,
     embedding_dimension INT NOT NULL CHECK (embedding_dimension > 0),
+    ocr_text TEXT NOT NULL DEFAULT '',
+    ocr_engine VARCHAR(100),
+    ocr_engine_version VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -63,6 +69,10 @@ CREATE TABLE IF NOT EXISTS indexing_jobs (
     total_scenes INT DEFAULT 0,
     processed_scenes INT DEFAULT 0,
     processed_frames INT DEFAULT 0,
+    embedding_model VARCHAR(100),
+    embedding_model_version VARCHAR(50),
+    ocr_engine VARCHAR(100),
+    ocr_engine_version VARCHAR(100),
     error_message TEXT,
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,

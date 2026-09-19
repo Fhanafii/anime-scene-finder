@@ -11,6 +11,8 @@ from PIL import Image, UnidentifiedImageError
 
 from .embedding import ImageEmbedder
 from .aggregation import aggregate_scene_matches
+from .hybrid import fuse_scores
+from .ocr import TesseractOCR
 from .vector_store import VectorStore
 
 MAX_IMAGE_BYTES = int(os.getenv("SEARCH_MAX_IMAGE_BYTES", "10485760"))
@@ -21,6 +23,7 @@ SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "10"))
 app = FastAPI(title="Anime Scene Finder")
 embedder = ImageEmbedder()
 store = VectorStore(os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/anime_scene_finder"))
+ocr = TesseractOCR()
 
 
 def error(code: str, message: str, status: int) -> JSONResponse:
@@ -60,6 +63,7 @@ async def search(image: UploadFile = File(...), limit: int = Query(SEARCH_RESULT
         temporary.flush()
         try:
             vector = embedder.encode(temporary.name)
+            query_ocr = ocr.extract(temporary.name)
             matches = store.search(
                 vector,
                 model=embedder.config.model_name,
@@ -69,9 +73,12 @@ async def search(image: UploadFile = File(...), limit: int = Query(SEARCH_RESULT
         except Exception:
             return error("SEARCH_UNAVAILABLE", "Search is temporarily unavailable.", 503)
 
+    scores = {match.frame_id: fuse_scores(match.similarity, query_ocr, match.ocr_text) for match in matches}
+    candidates = aggregate_scene_matches(matches, limit, scores)
+
     return JSONResponse(
         {
-            "query": {"type": "image"},
+            "query": {"type": "image", "ocr_text": query_ocr},
             "results": [
                 {
                     "anime": {"id": str(match.anime_id), "title": match.anime_title},
@@ -87,10 +94,15 @@ async def search(image: UploadFile = File(...), limit: int = Query(SEARCH_RESULT
                         "end_time": match.scene_end,
                         "representative_time": match.scene_representative,
                     },
-                    "match": {"timestamp": match.timestamp, "similarity": match.similarity},
+                    "match": {
+                        "timestamp": match.timestamp,
+                        "visual_score": match.similarity,
+                        "ocr_score": candidate.ocr_score,
+                        "final_score": candidate.final_score,
+                    },
                     "thumbnail_url": f"/api/v1/scenes/{match.scene_id}/thumbnail",
                 }
-                for candidate in aggregate_scene_matches(matches, limit)
+                for candidate in candidates
                 for match in [candidate.match]
             ],
         }

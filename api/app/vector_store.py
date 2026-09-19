@@ -21,6 +21,9 @@ class VectorMatch:
     scene_start: float
     scene_end: float
     scene_representative: float
+    ocr_text: str | None = None
+    ocr_engine: str | None = None
+    ocr_engine_version: str | None = None
 
 
 def vector_literal(values: list[float]) -> str:
@@ -46,6 +49,9 @@ class VectorStore:
         embedding: list[float],
         model: str,
         model_version: str,
+        ocr_text: str = "",
+        ocr_engine: str = "",
+        ocr_engine_version: str = "",
     ) -> int:
         import psycopg
 
@@ -57,15 +63,20 @@ class VectorStore:
                 """
                 INSERT INTO scene_frames
                     (scene_id, timestamp, object_key, embedding, embedding_model,
-                     embedding_model_version, embedding_dimension)
-                VALUES (%s, %s, %s, %s::vector, %s, %s, %s)
+                    embedding_model_version, embedding_dimension, ocr_text, ocr_engine,
+                    ocr_engine_version)
+                VALUES (%s, %s, %s, %s::vector, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scene_id, timestamp, embedding_model, embedding_model_version)
                 DO UPDATE SET object_key = EXCLUDED.object_key,
                               embedding = EXCLUDED.embedding,
-                              embedding_dimension = EXCLUDED.embedding_dimension
+                              embedding_dimension = EXCLUDED.embedding_dimension,
+                              ocr_text = EXCLUDED.ocr_text,
+                              ocr_engine = EXCLUDED.ocr_engine,
+                              ocr_engine_version = EXCLUDED.ocr_engine_version
                 RETURNING id
                 """,
-                (scene_id, timestamp, object_key, vector_literal(embedding), model, model_version, dimension),
+                (scene_id, timestamp, object_key, vector_literal(embedding), model, model_version, dimension,
+                 ocr_text, ocr_engine, ocr_engine_version),
             ).fetchone()
         return row[0]
 
@@ -75,7 +86,10 @@ class VectorStore:
         with psycopg.connect(self.dsn) as connection:
             connection.execute("SELECT 1").fetchone()
 
-    def start_or_resume_job(self, episode_id: int, total_scenes: int) -> int:
+    def start_or_resume_job(
+        self, episode_id: int, total_scenes: int, embedding_model: str, embedding_version: str,
+        ocr_engine: str, ocr_version: str,
+    ) -> int:
         import psycopg
 
         with psycopg.connect(self.dsn) as connection:
@@ -88,14 +102,18 @@ class VectorStore:
                 job_id = row[0]
                 connection.execute(
                     """UPDATE indexing_jobs SET status = 'PROCESSING', total_scenes = %s,
+                    embedding_model = %s, embedding_model_version = %s,
+                    ocr_engine = %s, ocr_engine_version = %s,
                     started_at = COALESCE(started_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s""", (total_scenes, job_id)
+                    WHERE id = %s""", (total_scenes, embedding_model, embedding_version, ocr_engine, ocr_version, job_id)
                 )
                 return job_id
             return connection.execute(
-                """INSERT INTO indexing_jobs (episode_id, status, total_scenes, started_at)
-                VALUES (%s, 'PROCESSING', %s, CURRENT_TIMESTAMP) RETURNING id""",
-                (episode_id, total_scenes),
+                """INSERT INTO indexing_jobs
+                    (episode_id, status, total_scenes, embedding_model, embedding_model_version,
+                     ocr_engine, ocr_engine_version, started_at)
+                VALUES (%s, 'PROCESSING', %s, %s, %s, %s, %s, CURRENT_TIMESTAMP) RETURNING id""",
+                (episode_id, total_scenes, embedding_model, embedding_version, ocr_engine, ocr_version),
             ).fetchone()[0]
 
     def scene_frame_count(self, scene_id: int, model: str, model_version: str) -> int:
@@ -140,7 +158,7 @@ class VectorStore:
 
     def upsert_episode(
         self, *, title: str, slug: str, season: int, episode: int, episode_title: str | None,
-        duration: float, source_identifier: str,
+        duration: float, source_identifier: str, source_path: str, source_checksum: str, source_size: int,
     ) -> tuple[int, int]:
         import psycopg
 
@@ -152,13 +170,18 @@ class VectorStore:
             ).fetchone()[0]
             episode_id = connection.execute(
                 """INSERT INTO episodes
-                    (anime_id, season_number, episode_number, title, duration_seconds, source_identifier)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    (anime_id, season_number, episode_number, title, duration_seconds, source_identifier,
+                     source_path, source_checksum, source_size)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (anime_id, season_number, episode_number)
                 DO UPDATE SET title = EXCLUDED.title, duration_seconds = EXCLUDED.duration_seconds,
-                              source_identifier = EXCLUDED.source_identifier
+                              source_identifier = EXCLUDED.source_identifier,
+                              source_path = EXCLUDED.source_path,
+                              source_checksum = EXCLUDED.source_checksum,
+                              source_size = EXCLUDED.source_size
                 RETURNING id""",
-                (anime_id, season, episode, episode_title, duration, source_identifier),
+                (anime_id, season, episode, episode_title, duration, source_identifier,
+                 source_path, source_checksum, source_size),
             ).fetchone()[0]
         return anime_id, episode_id
 
@@ -197,7 +220,8 @@ class VectorStore:
                 SELECT sf.id, sf.scene_id, sf.timestamp, sf.object_key,
                        1 - (sf.embedding <=> %s::vector) AS similarity,
                        a.id, a.title, e.id, e.season_number, e.episode_number,
-                       e.title, s.start_time, s.end_time, s.representative_time
+                       e.title, s.start_time, s.end_time, s.representative_time,
+                       sf.ocr_text, sf.ocr_engine, sf.ocr_engine_version
                 FROM scene_frames sf
                 JOIN scenes s ON s.id = sf.scene_id
                 JOIN episodes e ON e.id = s.episode_id
