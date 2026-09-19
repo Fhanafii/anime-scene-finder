@@ -20,20 +20,67 @@ Backend untuk mencari anime, episode, scene, dan timestamp dari screenshot. Inde
 ## Arsitektur
 
 ```text
-Cloudflare Tunnel
-        ↓
-Nginx :80 (host: 127.0.0.1:8090)
-        ↓
-FastAPI :8000
-   ├── OpenCLIP + OCR
-   └── PostgreSQL + pgvector
+                  Public Search Pipeline
 
-FZF / anime-index
-        ↓ Redis
-Index Worker
-   ├── FFmpeg + scene detection
-   ├── OpenCLIP + Tesseract OCR
-   └── MinIO + PostgreSQL
+                         INTERNET
+                            │
+                          HTTPS
+                            │
+                            ▼
+                    Cloudflare Tunnel
+                            │
+                            ▼
+                    127.0.0.1:8080
+                            │
+                            ▼
+                       ┌────────┐
+                       │ Nginx  │
+                       └───┬────┘
+                           │
+                           ▼
+                       ┌───────┐
+                       │ API   │
+                       │FastAPI│
+                       └───┬───┘
+                           │
+                    ┌──────┴──────┐
+                    ▼             ▼
+                 OpenCLIP        OCR
+                    │             │
+                    └──────┬──────┘
+                           ▼
+                   PostgreSQL+ pgvector
+                           │
+                           ▼
+                         MinIO
+
+
+                 Private Local Indexing
+
+                       ┌───────┐
+                       │  FZF  │
+                       └───┬───┘
+                           │
+                  ┌────────┴────────┐
+                  ▼                 ▼
+             Local Source      ani-cli Adapter
+                  │                 │
+                  └────────┬────────┘
+                           ▼
+                       Raw Video
+                           │
+                           ▼
+                     Index Worker
+                           │
+                  ┌────────┼────────┐
+                  ▼        ▼        ▼
+               FFmpeg    OCR     OpenCLIP
+                  │        │        │
+                  └────────┼────────┘
+                           ▼
+                   PostgreSQL + pgvector
+                           +
+                         MinIO
 ```
 
 ## Menjalankan Docker
@@ -259,25 +306,6 @@ anime-worker      Consume Redis indexing jobs
 anime-index-ui    Browse local sources with FZF
 ```
 
-## CI/CD
+---
 
-Push ke branch `main` menjalankan `.github/workflows/deploy.yml`. Workflow melakukan pull `origin/main`, validasi Compose, build image, restart service, menjalankan migration idempotent, lalu mengecek `/health` melalui Nginx.
-
-Secrets GitHub yang dibutuhkan:
-
-```text
-TS_OAUTH_CLIENT_ID
-TS_OAUTH_SECRET
-DEV_SERVER_HOST
-DEV_SERVER_USER
-DEV_SSH_PRIVATE_KEY
-DEV_SERVER_PORT (opsional)
-```
-
-Repository variable opsional:
-
-```text
-APP_DIR
-```
-
-Default deployment directory adalah `$HOME/anime-scene-finder`.
+Built with care by [FHANA Labs](https://fhanalabs.site/).
