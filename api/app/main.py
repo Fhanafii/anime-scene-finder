@@ -25,7 +25,14 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "50"))
 SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "10"))
 
-app = FastAPI(title="Anime Scene Finder")
+app = FastAPI(
+    title="Anime Scene Finder API",
+    description="Search anime scenes from screenshots using visual and OCR signals.",
+    version="0.8.0",
+    docs_url="/",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
 logger = logging.getLogger("anime_scene_finder.api")
 embedder = ImageEmbedder()
 store = VectorStore(os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/anime_scene_finder"))

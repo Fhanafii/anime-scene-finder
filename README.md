@@ -205,6 +205,19 @@ Base URL publik:
 https://anisceneapi.fhanalabs.site
 ```
 
+Swagger UI tersedia di root API:
+
+```text
+https://anisceneapi.fhanalabs.site/
+```
+
+Alternatif dokumentasi dan schema:
+
+```text
+https://anisceneapi.fhanalabs.site/redoc
+https://anisceneapi.fhanalabs.site/openapi.json
+```
+
 ### Health
 
 ```bash
