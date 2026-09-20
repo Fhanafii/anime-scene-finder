@@ -28,7 +28,7 @@ SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "10"))
 app = FastAPI(
     title="Anime Scene Finder API",
     description="Search anime scenes from screenshots using visual and OCR signals.",
-    version="0.8.4",
+    version="0.9.0",
     docs_url="/",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -174,7 +174,7 @@ def episodes(anime_id: int) -> JSONResponse:
         503: {"content": {"application/json": {"example": {"error": {"code": "SEARCH_UNAVAILABLE", "message": "Search is temporarily unavailable."}}}}},
     },
 )
-async def search(image: UploadFile = File(..., description="Screenshot file (JPG, PNG, WEBP, GIF, BMP, or TIFF)"), limit: int = Query(SEARCH_RESULT_LIMIT, ge=1, le=50, description="Maximum results, from 1 to 50")) -> JSONResponse:
+async def search(image: UploadFile = File(..., description="Screenshot file (JPG, PNG, WEBP, GIF, BMP, or TIFF)"), limit: int = Query(..., ge=1, le=50, description="Required maximum results, from 1 to 50; use 10 for the standard request")) -> JSONResponse:
     data = await image.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         return error("IMAGE_TOO_LARGE", "The uploaded image exceeds the size limit.", 413)

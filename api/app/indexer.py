@@ -79,20 +79,23 @@ def index_episode(request: IndexRequest) -> int:
             for frame_index, timestamp in enumerate(timestamps):
                 object_key = f"{slugify(request.anime)}/s{request.season:02d}/e{request.episode:03d}/scene-{scene_index:05d}-{frame_index}.jpg"
                 frame_path = Path(os.getenv("PROCESSING_ROOT", "/data/processing")) / "keyframes" / object_key
-                extract_frame(request.source, timestamp, frame_path)
-                object_store.upload(frame_path, object_key)
-                ocr_text = ocr.extract(frame_path)
-                store.insert_frame(
-                    scene_id=scene_id,
-                    timestamp=timestamp,
-                    object_key=object_key,
-                    embedding=embedder.encode(frame_path),
-                    model=embedder.config.model_name,
-                    model_version=embedder.config.pretrained,
-                    ocr_text=ocr_text,
-                    ocr_engine=ocr.engine,
-                    ocr_engine_version=ocr_version,
-                )
+                try:
+                    extract_frame(request.source, timestamp, frame_path)
+                    object_store.upload(frame_path, object_key)
+                    ocr_text = ocr.extract(frame_path)
+                    store.insert_frame(
+                        scene_id=scene_id,
+                        timestamp=timestamp,
+                        object_key=object_key,
+                        embedding=embedder.encode(frame_path),
+                        model=embedder.config.model_name,
+                        model_version=embedder.config.pretrained,
+                        ocr_text=ocr_text,
+                        ocr_engine=ocr.engine,
+                        ocr_engine_version=ocr_version,
+                    )
+                finally:
+                    frame_path.unlink(missing_ok=True)
             store.mark_scene_processed(job_id, scene_index, len(timestamps))
         store.complete_job(job_id)
     except Exception as exc:
