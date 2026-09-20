@@ -52,12 +52,25 @@ def error(code: str, message: str, status: int) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    summary="Liveness check",
+    description="Returns OK when the API process is running.",
+    responses={200: {"content": {"application/json": {"example": {"status": "ok"}}}}},
+)
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/health/ready")
+@app.get(
+    "/health/ready",
+    summary="Readiness check",
+    description="Checks PostgreSQL, MinIO, OpenCLIP, and OCR availability.",
+    responses={
+        200: {"content": {"application/json": {"example": {"status": "ready"}}}},
+        503: {"content": {"application/json": {"example": {"error": {"code": "SERVICE_UNAVAILABLE", "message": "Search service is not ready."}}}}},
+    },
+)
 def readiness() -> JSONResponse:
     try:
         store.check_connection()
@@ -69,7 +82,20 @@ def readiness() -> JSONResponse:
     return JSONResponse({"status": "ready"})
 
 
-@app.get("/api/v1/scenes/{scene_id}")
+@app.get(
+    "/api/v1/scenes/{scene_id}",
+    summary="Get scene details",
+    description="Example: scene ID 1 belongs to Overlord season 1 episode 1.",
+    responses={
+        200: {"content": {"application/json": {"example": {
+            "id": 1, "start_time": 0.0, "end_time": 14.139, "representative_time": 7.0695,
+            "episode": {"id": 1, "season": 1, "episode": 1, "title": None},
+            "anime": {"id": 5, "title": "Overlord"},
+            "thumbnail_url": "/api/v1/scenes/1/thumbnail",
+        }}}},
+        404: {"content": {"application/json": {"example": {"error": {"code": "NOT_FOUND", "message": "Scene not found."}}}}},
+    },
+)
 def scene(scene_id: int) -> JSONResponse:
     value = store.get_scene(scene_id)
     if not value:
@@ -79,7 +105,15 @@ def scene(scene_id: int) -> JSONResponse:
     return JSONResponse(value)
 
 
-@app.get("/api/v1/scenes/{scene_id}/thumbnail")
+@app.get(
+    "/api/v1/scenes/{scene_id}/thumbnail",
+    summary="Get scene thumbnail",
+    description="Returns the representative keyframe as a JPEG image. Example scene ID: 1.",
+    responses={
+        200: {"content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}}},
+        404: {"content": {"application/json": {"example": {"error": {"code": "NOT_FOUND", "message": "Thumbnail not found."}}}}},
+    },
+)
 def thumbnail(scene_id: int) -> Response:
     value = store.get_scene(scene_id)
     if not value or not value.get("object_key"):
@@ -90,21 +124,57 @@ def thumbnail(scene_id: int) -> Response:
         return error("NOT_FOUND", "Thumbnail not found.", 404)
 
 
-@app.get("/api/v1/anime/{anime_id}")
+@app.get(
+    "/api/v1/anime/{anime_id}",
+    summary="Get anime metadata",
+    description="Example: anime ID 5 is Overlord.",
+    responses={
+        200: {"content": {"application/json": {"example": {"id": 5, "title": "Overlord", "slug": "overlord"}}}},
+        404: {"content": {"application/json": {"example": {"error": {"code": "NOT_FOUND", "message": "Anime not found."}}}}},
+    },
+)
 def anime(anime_id: int) -> JSONResponse:
     value = store.get_anime(anime_id)
     return JSONResponse(value or {"error": {"code": "NOT_FOUND", "message": "Anime not found."}}, status_code=200 if value else 404)
 
 
-@app.get("/api/v1/anime/{anime_id}/episodes")
+@app.get(
+    "/api/v1/anime/{anime_id}/episodes",
+    summary="List anime episodes",
+    description="Example anime ID 5 returns the indexed Overlord episode.",
+    responses={
+        200: {"content": {"application/json": {"example": {"results": [{"id": 1, "season": 1, "episode": 1, "title": None, "duration": 1454.12}]}}}},
+        404: {"content": {"application/json": {"example": {"error": {"code": "NOT_FOUND", "message": "Anime not found."}}}}},
+    },
+)
 def episodes(anime_id: int) -> JSONResponse:
     if not store.get_anime(anime_id):
         return error("NOT_FOUND", "Anime not found.", 404)
     return JSONResponse({"results": store.get_episodes(anime_id)})
 
 
-@app.post("/api/v1/search")
-async def search(image: UploadFile = File(...), limit: int = Query(SEARCH_RESULT_LIMIT, ge=1, le=50)) -> JSONResponse:
+@app.post(
+    "/api/v1/search",
+    summary="Search scenes by screenshot",
+    description="Upload a JPG, PNG, WEBP, GIF, BMP, or TIFF screenshot as multipart/form-data. Example file: an Overlord episode screenshot.",
+    openapi_extra={"requestBody": {"content": {"multipart/form-data": {"example": {"image": "overlord-episode-01.jpg", "limit": 10}}}}},
+    responses={
+        200: {"content": {"application/json": {"example": {
+            "query": {"type": "image", "ocr_text": "OVERLORD"},
+            "results": [{
+                "anime": {"id": "5", "title": "Overlord"},
+                "episode": {"id": "1", "season": 1, "episode": 1, "title": None},
+                "scene": {"id": "1", "start_time": 0.0, "end_time": 14.139, "representative_time": 7.0695},
+                "match": {"timestamp": 7.0695, "visual_score": 0.91, "ocr_score": 0.82, "final_score": 0.88},
+                "thumbnail_url": "/api/v1/scenes/1/thumbnail",
+            }],
+        }}}},
+        415: {"content": {"application/json": {"example": {"error": {"code": "UNSUPPORTED_IMAGE_TYPE", "message": "The uploaded file is not a supported image type."}}}}},
+        422: {"content": {"application/json": {"example": {"error": {"code": "INVALID_IMAGE", "message": "The uploaded file is not a valid image."}}}}},
+        503: {"content": {"application/json": {"example": {"error": {"code": "SEARCH_UNAVAILABLE", "message": "Search is temporarily unavailable."}}}}},
+    },
+)
+async def search(image: UploadFile = File(..., description="Screenshot file (JPG, PNG, WEBP, GIF, BMP, or TIFF)"), limit: int = Query(SEARCH_RESULT_LIMIT, ge=1, le=50, description="Maximum results, from 1 to 50")) -> JSONResponse:
     data = await image.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         return error("IMAGE_TOO_LARGE", "The uploaded image exceeds the size limit.", 413)
