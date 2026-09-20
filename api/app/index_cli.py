@@ -20,8 +20,10 @@ def main() -> None:
     request = IndexRequest(args.anime, args.season, args.episode, Path(args.source), args.title, 0, args.force_reindex)
     if args.queue:
         enqueue(request)
+        print(f"queued indexing: {args.anime} S{args.season:02d}E{args.episode:02d} ({args.source})", flush=True)
         return
-    print(index_episode(request))
+    episode_id = index_episode(request)
+    print(f"indexed episode {episode_id}: {args.anime} S{args.season:02d}E{args.episode:02d}", flush=True)
 
 
 if __name__ == "__main__":
