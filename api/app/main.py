@@ -21,7 +21,15 @@ from .object_store import ObjectStore
 
 MAX_IMAGE_BYTES = int(os.getenv("SEARCH_MAX_IMAGE_BYTES", "10485760"))
 MAX_IMAGE_DIMENSION = int(os.getenv("SEARCH_MAX_IMAGE_DIMENSION", "4096"))
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+    "image/tiff",
+}
 SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "50"))
 SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "10"))
 
