@@ -79,9 +79,11 @@ services:
       - redis
     volumes:
       - ./data/anime-source:/data/anime-source:ro
+      - ./data/processing:/data/processing
     environment:
       <<: *app-env
       SOURCE_ROOT: /data/anime-source
+      PROCESSING_ROOT: /data/processing
     networks: [backend]
 
   postgres:

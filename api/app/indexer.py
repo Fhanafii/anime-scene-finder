@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import hashlib
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,7 +78,7 @@ def index_episode(request: IndexRequest) -> int:
                 continue
             for frame_index, timestamp in enumerate(timestamps):
                 object_key = f"{slugify(request.anime)}/s{request.season:02d}/e{request.episode:03d}/scene-{scene_index:05d}-{frame_index}.jpg"
-                frame_path = request.source.parent / ".keyframes" / object_key
+                frame_path = Path(os.getenv("PROCESSING_ROOT", "/data/processing")) / "keyframes" / object_key
                 extract_frame(request.source, timestamp, frame_path)
                 object_store.upload(frame_path, object_key)
                 ocr_text = ocr.extract(frame_path)
