@@ -21,22 +21,14 @@ from .object_store import ObjectStore
 
 MAX_IMAGE_BYTES = int(os.getenv("SEARCH_MAX_IMAGE_BYTES", "10485760"))
 MAX_IMAGE_DIMENSION = int(os.getenv("SEARCH_MAX_IMAGE_DIMENSION", "4096"))
-ALLOWED_IMAGE_TYPES = {
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-    "image/gif",
-    "image/bmp",
-    "image/tiff",
-}
+ALLOWED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP", "GIF", "BMP", "TIFF"}
 SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "50"))
 SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "10"))
 
 app = FastAPI(
     title="Anime Scene Finder API",
     description="Search anime scenes from screenshots using visual and OCR signals.",
-    version="0.8.0",
+    version="0.8.4",
     docs_url="/",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -113,14 +105,15 @@ def episodes(anime_id: int) -> JSONResponse:
 
 @app.post("/api/v1/search")
 async def search(image: UploadFile = File(...), limit: int = Query(SEARCH_RESULT_LIMIT, ge=1, le=50)) -> JSONResponse:
-    if image.content_type not in ALLOWED_IMAGE_TYPES:
-        return error("UNSUPPORTED_IMAGE_TYPE", "The uploaded file is not a supported image type.", 415)
     data = await image.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         return error("IMAGE_TOO_LARGE", "The uploaded image exceeds the size limit.", 413)
     try:
         with Image.open(io.BytesIO(data)) as decoded:
+            image_format = decoded.format
             decoded.verify()
+            if image_format not in ALLOWED_IMAGE_FORMATS:
+                return error("UNSUPPORTED_IMAGE_TYPE", "The uploaded file is not a supported image type.", 415)
             if max(decoded.size) > MAX_IMAGE_DIMENSION:
                 return error("IMAGE_DIMENSIONS_TOO_LARGE", "The uploaded image dimensions exceed the limit.", 413)
     except (UnidentifiedImageError, OSError):
