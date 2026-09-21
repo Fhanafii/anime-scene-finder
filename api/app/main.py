@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, Query, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from PIL import Image, UnidentifiedImageError
 
@@ -32,6 +33,17 @@ app = FastAPI(
     docs_url="/",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8082",
+        "http://127.0.0.1:8082",
+        "https://aniscene.fhanalabs.site",
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 logger = logging.getLogger("anime_scene_finder.api")
 embedder = ImageEmbedder()
